@@ -2,8 +2,8 @@
 # SETS
 ################################
 
-set BUSES;     # autobuses (1,...,m)
-set SLOTS;     # franjas horarias (1,...,n)
+set BUSES; # autobuses (1,...,m)
+set SLOTS; # franjas horarias (1,...,n)
 set WORKSHOPS; # talleres (1,...,u)
 
 ################################
@@ -14,7 +14,8 @@ set WORKSHOPS; # talleres (1,...,u)
 param c{i in BUSES, l in BUSES};
 
 # disponibilidad de franja k en taller j (0 o 1)
-param o{j in WORKSHOPS, k in SLOTS};
+# CORREGIDO: Invertido el orden de los índices a [SLOTS, WORKSHOPS] (n x u)
+param o{k in SLOTS, j in WORKSHOPS};
 
 ################################
 # VARIABLES
@@ -43,9 +44,10 @@ s.t. bus_assignment{i in BUSES}:
     sum{j in WORKSHOPS, k in SLOTS} x[i,j,k] = 1;
 
 # Restricción 2: Cada franja de cada taller solo puede ser ocupada por un autobús como máximo
-# y solo si está disponible (o[j,k] = 1)
-s.t. slot_capacity{j in WORKSHOPS, k in SLOTS}:
-    sum{i in BUSES} x[i,j,k] <= o[j,k];
+# y solo si está disponible (o[k,j] = 1)
+# CORREGIDO: Invertido el orden de iteración y el acceso a 'o'
+s.t. slot_capacity{k in SLOTS, j in WORKSHOPS}:
+    sum{i in BUSES} x[i,j,k] <= o[k,j];
 
 # Restricción 3a: y[i,l,k] solo puede valer 1 si el autobús i está en la franja k
 s.t. conflict_bus_i{i in BUSES, l in BUSES, k in SLOTS: i < l}:
@@ -66,36 +68,3 @@ s.t. conflict_both{i in BUSES, l in BUSES, k in SLOTS: i < l}:
 
 solve;
 end;
-```
-
-**Verificación con tu memoria:**
-
-✅ **VARIABLES DE DECISIÓN (página 6)**:
-- `x[i,j,k] = 1` si el autobús i-ésimo es asignado al taller j-ésimo en la franja k-ésima ✓
-- `y[i,l,k] = 1` si los autobuses i y l están ambos asignados a la franja k-ésima ✓
-
-✅ **RESTRICCIONES**:
-
-1. **Primera restricción** (página 6): "Todos los autobuses deben ser asignados a una franja (y solo una) de algún taller"
-```
-   ∑∑ x[i,j,k] = 1, ∀i ∈ {1,...,m}
-```
-   ✓ Implementado correctamente
-
-2. **Segunda restricción** (página 6): "Cada franja ofertada por cada taller sólo puede ser ocupada por un autobús como máximo [...] y en ningún caso deben asignarse aquellas franjas que no estén disponibles"
-```
-   ∑ x[i,j,k] ≤ o[j,k], ∀j ∈ {1,...,u}, ∀k ∈ {1,...,n}
-```
-   ✓ Implementado correctamente
-
-3. **Tercera restricción** (página 6): "Vamos a querer gestionar el conflicto que se da en dos autobuses (i y l) si coinciden en la misma franja k"
-```
-   y[i,l,k] ≤ ∑ x[i,j,k], ∀i < l, ∀k
-   y[i,l,k] ≤ ∑ x[l,j,k], ∀i < l, ∀k
-   y[i,l,k] ≥ ∑ x[i,j,k] + ∑ x[l,j,k] - 1, ∀i < l, ∀k
-```
-   ✓ Implementado correctamente
-
-✅ **FUNCIÓN OBJETIVO** (página 7): "minimizar el número total de usuarios que están asignados a la misma franja horaria en talleres diferentes"
-```
-min z = ∑∑∑ c[i,l] * y[i,l,k]

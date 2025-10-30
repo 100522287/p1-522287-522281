@@ -28,7 +28,7 @@ def parse_input_file(input_file):
         
         # matriz o (u x n)
         o_matrix = []
-        for j in range(m + 1, m + 1 + u):
+        for j in range(m + 1, m + 1 + n):
             if j >= len(lines):
                 print(f"Error: Falta la línea {j} de la matriz o.", file=sys.stderr)
                 sys.exit(1)
@@ -40,8 +40,8 @@ def parse_input_file(input_file):
             print(f"Error: La matriz c debe ser {m}x{m}.", file=sys.stderr)
             sys.exit(1)
             
-        if len(o_matrix) != u or any(len(row) != n for row in o_matrix):
-            print(f"Error: La matriz o debe ser {u}x{n}.", file=sys.stderr)
+        if len(o_matrix) != n or any(len(row) != u for row in o_matrix):
+            print(f"Error: La matriz o debe ser {n}x{u}.", file=sys.stderr)
             sys.exit(1)
             
         return n, m, u, c_matrix, o_matrix
@@ -70,9 +70,9 @@ def generate_dat_file(dat_file, n, m, u, c_matrix, o_matrix):
             
             # parámetro o (disponibilidad de franjas)
             f.write("param o :\n")
-            f.write("     " + " ".join([f"{k+1:3}" for k in range(n)]) + " :=\n")
-            for j in range(u):
-                f.write(f"  {j+1:2} " + " ".join([f"{o_matrix[j][k]:3}" for k in range(n)]) + "\n")
+            f.write(" " + " ".join([f"{k+1:3}" for k in range(u)]) + " :=\n")
+            for j in range(n):
+                f.write(f" {j+1:2} " + " ".join([f"{o_matrix[j][k]:3}" for k in range(u)]) + "\n")
             f.write(";\n\n")
 
             f.write("end;\n")
@@ -83,12 +83,15 @@ def generate_dat_file(dat_file, n, m, u, c_matrix, o_matrix):
 
 def run_glpk(model_file, data_file, solution_file):
     """invoca a glpsol para resolver el problema"""
+    env = os.environ.copy()
+    env['LC_ALL'] = 'C'
     try:
         subprocess.run(
             ['glpsol', '-m', model_file, '-d', data_file, '-o', solution_file],
             check=True,
             capture_output=True,
-            text=True
+            text=True,
+            env=env
         )
     except Exception as e:
         print(f"Error al invocar GLPK: {e}", file=sys.stderr)
@@ -111,9 +114,9 @@ def print_solution(solution_file):
                 if line.startswith("Objective:"):
                     fun_obj = line.split('=')[-1].strip()
                 if "Rows" in line and not line.startswith("Column"):
-                    num_rest = line.split()[0]
+                    num_rest = line.split()[1]
                 if "Columns" in line:
-                    num_vars = line.split()[0]
+                    num_vars = line.split()[1]
 
                 # para encontrar y leer las variables x
                 if line.startswith("Column instances:"):
@@ -141,7 +144,6 @@ def print_solution(solution_file):
         sys.exit(1)
 
     # Imprimir la salida final
-    print("--- Solución Óptima ---")
     print(f"Valor óptimo de la función objetivo: {fun_obj}")
     print(f"Número de variables de decisión: {num_vars}")
     print(f"Número de restricciones totales: {num_rest}")

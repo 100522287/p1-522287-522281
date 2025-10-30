@@ -77,12 +77,20 @@ def generate_dat_file(dat_file, n, m, k_d, k_p, distances, passengers):
         
 def run_glpk(model_file, data_file, solution_file):
     """invoca a glpsol para resolver el problema"""
+
+    # Copiar el entorno actual
+    env = os.environ.copy()
+    # Forzar la local_configuración a 'C' (inglés) para que glpsol
+    # escriba "Rows", "Columns", etc., y no "Filas", "Columnas"
+    env['LC_ALL'] = 'C'
+
     try:
         subprocess.run(
             ['glpsol', '-m', model_file, '-d', data_file, '-o', solution_file],
             check=True,
             capture_output=True, # Captura stdout y stderr
-            text=True
+            text=True,
+            env=env
         )
 
     except Exception as e:
@@ -107,9 +115,9 @@ def print_solution(solution_file, m):
                 if line.startswith("Objective:"):
                     fun_obj = line.split('=')[-1].strip()
                 if "Rows" in line and not line.startswith("Column"):
-                    num_rest = line.split()[0]
+                    num_rest = line.split()[1]
                 if "Columns" in line:
-                    num_vars = line.split()[0]
+                    num_vars = line.split()[1]
 
                 # para encontrar y leer las variables
                 if line.startswith("Column instances:"):
@@ -139,7 +147,6 @@ def print_solution(solution_file, m):
         sys.exit(1)
 
     # Imprimir la salida final 
-    print("--- Solución Óptima ---")
     print(f"Valor óptimo de la función objetivo: {fun_obj}")
     print(f"Número de variables de decisión: {num_vars}")
     print(f"Número de restricciones totales: {num_rest}")
