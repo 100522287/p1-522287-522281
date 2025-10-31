@@ -1,183 +1,189 @@
+#!/usr/bin/env python3
+
 import sys
 import subprocess
-import os
 import re
+import os
 
-def parse_input_file(input_file):
-    """lee el fichero de entrada y extrae los datos necesarios"""
+def validar_argumentos():
+    """Valida los argumentos de entrada del script."""
+    if len(sys.argv) != 3:
+        print("Uso: python gen-buses.py <fichero-entrada> <fichero-salida>")
+        sys.exit(1)
+    return sys.argv[1], sys.argv[2]
+
+def leer_fichero_entrada(fichero_entrada):
+    """Lee y parsea el fichero de entrada con las dimensiones y matrices."""
     try:
-        with open(input_file, 'r') as f:
-            lines = [line for line in f.readlines() if line.strip()]
+        with open(fichero_entrada, "r") as fichero:
+            lineas = [linea.strip() for linea in fichero.readlines() if linea.strip()]
         
-        if len(lines) < 2:
-            print("Error: El fichero de entrada no tiene suficientes líneas de datos.", file=sys.stderr)
-            sys.exit(1)
+        # Primera línea: dimensiones (n franjas, m autobuses, u talleres)
+        n, m, u = map(int, lineas[0].split())
         
-        # n, m, u
-        first_vals = re.findall(r'[\d\.]+', lines[0])
-        n, m, u = map(int, first_vals)
+        # Leer matriz C (m x m) - Pasajeros compartidos
+        matriz_c = []
+        cursor = 1
+        for i in range(m):
+            fila = list(map(int, lineas[cursor].split()))
+            if len(fila) != m:
+                raise ValueError(f"Matriz C inválida: fila {i+1} tiene {len(fila)} elementos, esperados {m}")
+            matriz_c.append(fila)
+            cursor += 1
         
-        # matriz c (m x m)
-        c_matrix = []
-        for i in range(1, m + 1):
-            if i >= len(lines):
-                print(f"Error: Falta la línea {i} de la matriz c.", file=sys.stderr)
-                sys.exit(1)
-            row_vals = re.findall(r'[\d\.]+', lines[i])
-            c_matrix.append(list(map(int, row_vals)))
+        # Leer matriz O (n x u) - Disponibilidad
+        matriz_o = []
+        for i in range(n):
+            fila = list(map(int, lineas[cursor].split()))
+            if len(fila) != u:
+                raise ValueError(f"Matriz O inválida: fila {i+1} tiene {len(fila)} elementos, esperados {u}")
+            matriz_o.append(fila)
+            cursor += 1
         
-        # matriz o (u x n)
-        o_matrix = []
-        for j in range(m + 1, m + 1 + n):
-            if j >= len(lines):
-                print(f"Error: Falta la línea {j} de la matriz o.", file=sys.stderr)
-                sys.exit(1)
-            row_vals = re.findall(r'[\d\.]+', lines[j])
-            o_matrix.append(list(map(int, row_vals)))
-        
-        # validación
-        if len(c_matrix) != m or any(len(row) != m for row in c_matrix):
-            print(f"Error: La matriz c debe ser {m}x{m}.", file=sys.stderr)
-            sys.exit(1)
-            
-        if len(o_matrix) != n or any(len(row) != u for row in o_matrix):
-            print(f"Error: La matriz o debe ser {n}x{u}.", file=sys.stderr)
-            sys.exit(1)
-            
-        return n, m, u, c_matrix, o_matrix
+        return n, m, u, matriz_c, matriz_o
     
     except Exception as e:
-        print(f"Error: Error leyendo el fichero de entrada: {e}", file=sys.stderr)
+        print(f"Error al leer el fichero de entrada: {e}")
         sys.exit(1)
 
-def generate_dat_file(dat_file, n, m, u, c_matrix, o_matrix):
-    """genera el fichero .dat con los datos"""
+def escribir_fichero_datos(fichero_salida, n, m, u, matriz_c, matriz_o):
+    """Genera el fichero de datos en formato AMPL/GLPK."""
     try:
-        with open(dat_file, 'w') as f:
+        with open(fichero_salida, "w") as f:
             f.write("data;\n\n")
             
-            # sets
-            f.write(f"set BUSES := {' '.join([str(i+1) for i in range(m)])};\n")
-            f.write(f"set SLOTS := {' '.join([str(j+1) for j in range(n)])};\n")
-            f.write(f"set WORKSHOPS := {' '.join([str(k+1) for k in range(u)])};\n\n")
+            # Declarar sets
+            f.write(f"set BUSES := {' '.join(str(i) for i in range(1, m + 1))};\n")
+            f.write(f"set SLOTS := {' '.join(str(i) for i in range(1, n + 1))};\n")
+            f.write(f"set WORKSHOP := {' '.join(str(i) for i in range(1, u + 1))};\n\n")
             
-            # parámetro c (matriz de conflictos)
-            f.write("param c :\n")
-            f.write("     " + " ".join([f"{j+1:4}" for j in range(m)]) + " :=\n")
+            # Matriz C (pasajeros compartidos)
+            f.write(f"param c : {' '.join(str(i) for i in range(1, m + 1))} :=\n")
             for i in range(m):
-                f.write(f"  {i+1:2} " + " ".join([f"{c_matrix[i][j]:4}" for j in range(m)]) + "\n")
+                f.write(f"{i + 1} {' '.join(str(matriz_c[i][j]) for j in range(m))}\n")
             f.write(";\n\n")
             
-            # parámetro o (disponibilidad de franjas)
-            f.write("param o :\n")
-            f.write(" " + " ".join([f"{k+1:3}" for k in range(u)]) + " :=\n")
-            for j in range(n):
-                f.write(f" {j+1:2} " + " ".join([f"{o_matrix[j][k]:3}" for k in range(u)]) + "\n")
+            # Matriz O (disponibilidad)
+            f.write(f"param o : {' '.join(str(i) for i in range(1, u + 1))} :=\n")
+            for i in range(n):
+                f.write(f"{i + 1} {' '.join(str(matriz_o[i][j]) for j in range(u))}\n")
             f.write(";\n\n")
-
+            
             f.write("end;\n")
-
+    
     except Exception as e:
-        print(f"Error: Error escribiendo el fichero de datos: {e}", file=sys.stderr)
+        print(f"Error al escribir el fichero de datos: {e}")
         sys.exit(1)
 
-def run_glpk(model_file, data_file, solution_file):
-    """invoca a glpsol para resolver el problema"""
-    env = os.environ.copy()
-    env['LC_ALL'] = 'C'
-    try:
-        subprocess.run(
-            ['glpsol', '-m', model_file, '-d', data_file, '-o', solution_file],
-            check=True,
-            capture_output=True,
-            text=True,
-            env=env
-        )
-    except Exception as e:
-        print(f"Error al invocar GLPK: {e}", file=sys.stderr)
-        sys.exit(1)
+def calcular_estadisticas(n, m, u):
+    """Calcula el número esperado de variables y restricciones."""
+    num_variables = m * n * u + (m * (m - 1) // 2) * n
+    num_restricciones = m + n * u + 3 * (m * (m - 1) // 2) * n
+    return num_variables, num_restricciones
 
-def print_solution(solution_file):
-    """lee el fichero de solución y muestra los resultados"""
-    fun_obj = "No encontrado"
-    num_rest = "No encontrado"
-    num_vars = "No encontrado"
-    assignments = []
-    in_columns_section = False
+def parsear_salida_glpk(fichero_temporal):
+    """Extrae información relevante del fichero de salida de GLPK."""
+    patron_objetivo = re.compile(r"Objective:\s+\w+\s+=\s+([0-9]+(?:\.[0-9]+)?)")
+    patron_status = re.compile(r"Status:\s+(\w+)")
+    patron_rows = re.compile(r"Rows:\s+(\d+)")
+    patron_cols = re.compile(r"Columns:\s+(\d+)")
+    patron_asignacion = re.compile(r"^\s*\d+\s+x\[(\d+),(\d+),(\d+)\]\s+\*\s+1(?:\.0+)?\s")
+    
+    resultado = {
+        'objetivo': None,
+        'status': None,
+        'filas': None,
+        'columnas': None,
+        'asignaciones': {}
+    }
+    
+    with open(fichero_temporal, "r") as f:
+        for linea in f:
+            if match := patron_objetivo.search(linea):
+                resultado['objetivo'] = float(match.group(1))
+            elif match := patron_status.search(linea):
+                resultado['status'] = match.group(1)
+            elif match := patron_rows.search(linea):
+                resultado['filas'] = int(match.group(1))
+            elif match := patron_cols.search(linea):
+                resultado['columnas'] = int(match.group(1))
+            elif match := patron_asignacion.search(linea):
+                bus = int(match.group(1))
+                franja = int(match.group(2))
+                taller = int(match.group(3))
+                resultado['asignaciones'][bus] = (franja, taller)
+    
+    return resultado
 
-    try:
-        with open(solution_file, 'r') as f_sol:
-            for line in f_sol:
-                line = line.strip()
-
-                # buscar datos generales
-                if line.startswith("Objective:"):
-                    fun_obj = line.split('=')[-1].strip()
-                if "Rows" in line and not line.startswith("Column"):
-                    num_rest = line.split()[1]
-                if "Columns" in line:
-                    num_vars = line.split()[1]
-
-                # para encontrar y leer las variables x
-                if line.startswith("Column instances:"):
-                    in_columns_section = True
-                    continue
-                if line.startswith("---") and in_columns_section:
-                    in_columns_section = False
-                    continue
-
-                if in_columns_section:
-                    parts = line.split()
-                    if len(parts) >= 4 and parts[1].startswith('x') and float(parts[3]) > 0.99:
-                        var_name = parts[1]
-                        indices_str = var_name.replace("x[", "").replace("]", "")
-                        indices = indices_str.split(',')
-                        
-                        bus = int(indices[0])
-                        workshop = int(indices[1])
-                        slot = int(indices[2])
-                        
-                        assignments.append((bus, workshop, slot))
-
-    except Exception as e:
-        print(f"Error: No se encontró el fichero o no se pudo leer: {e}", file=sys.stderr)
-        sys.exit(1)
-
-    # Imprimir la salida final
-    print(f"Valor óptimo de la función objetivo: {fun_obj}")
-    print(f"Número de variables de decisión: {num_vars}")
-    print(f"Número de restricciones totales: {num_rest}")
-
-    print("\nAsignaciones de Autobuses:")
-    if assignments:
-        for bus, workshop, slot in sorted(assignments):
-            print(f"  - Autobús {bus} asignado al taller {workshop} en la franja {slot}")
+def mostrar_resultados(resultado, m, num_vars_est, num_rest_est):
+    """Muestra los resultados en consola."""
+    # Estado del modelo
+    if resultado['status']:
+        print(f"Estado del modelo: {resultado['status']}")
+    
+    # Valor objetivo
+    if resultado['objetivo'] is not None:
+        print(f"Objetivo (Impacto mínimo): {resultado['objetivo']}")
     else:
-        print("No se encontraron asignaciones")
-
-# main
-if __name__ == "__main__":
+        print("No se pudo obtener solución óptima")
     
-    if len(sys.argv) != 3:
-        print("Uso: gen-2.py <fichero-entrada> <fichero-salida.dat>", file=sys.stderr)
-        sys.exit(1)
+    # Estadísticas del modelo
+    if resultado['filas'] and resultado['columnas']:
+        print(f"Número de restricciones: {resultado['filas']}")
+        print(f"Número de variables: {resultado['columnas']}")
+    else:
+        print(f"Número de variables (estimado): {num_vars_est}")
+        print(f"Número de restricciones (estimado): {num_rest_est}")
+    
+    # Asignaciones
+    print("\n---------ASIGNACIONES---------")
+    for i in range(1, m + 1):
+        if i in resultado['asignaciones']:
+            franja, taller = resultado['asignaciones'][i]
+            print(f"Autobús Bus{i} asignado a Franja{franja} del Taller{taller}")
+        else:
+            print(f"Error: autobús Bus{i} NO asignado. Revisar el parsing o el modelo.")
+
+def resolver_modelo(fichero_modelo, fichero_datos, fichero_temporal, n, m, u):
+    """Ejecuta GLPK y procesa los resultados."""
+    comando = ["glpsol", "-m", fichero_modelo, "-d", fichero_datos, "-o", fichero_temporal]
+    
+    try:
+        subprocess.run(comando, capture_output=True, text=True, check=True)
         
-    input_file = sys.argv[1]
-    dat_file = sys.argv[2]
-    model_file = "parte-2-2.mod"
-    solution_file = "temp_solution_2.txt"
+        num_vars_est, num_rest_est = calcular_estadisticas(n, m, u)
+        resultado = parsear_salida_glpk(fichero_temporal)
+        mostrar_resultados(resultado, m, num_vars_est, num_rest_est)
+    
+    except subprocess.CalledProcessError:
+        print("Error al ejecutar GLPK. El problema podría ser infactible o no acotado.")
+    except FileNotFoundError:
+        print("Error: El ejecutable 'glpsol' no se encontró. ¿Está GLPK instalado y en PATH?")
+    except Exception as e:
+        print(f"Error inesperado durante la ejecución: {e}")
+    finally:
+        # Limpiar fichero temporal
+        if os.path.exists(fichero_temporal):
+            try:
+                os.remove(fichero_temporal)
+            except Exception:
+                pass
 
-    # 1. Leer entrada
-    n, m, u, c_matrix, o_matrix = parse_input_file(input_file)
+def main():
+    """Función principal del script."""
+    # Configuración
+    fichero_entrada, fichero_salida = validar_argumentos()
+    fichero_modelo = "parte-2-2.mod"
+    fichero_temporal = "fichero-temporal"
     
-    # 2. Generar .dat
-    generate_dat_file(dat_file, n, m, u, c_matrix, o_matrix)
+    # Leer datos de entrada
+    n, m, u, matriz_c, matriz_o = leer_fichero_entrada(fichero_entrada)
     
-    # 3. Resolver
-    run_glpk(model_file, dat_file, solution_file)
+    # Generar fichero de datos
+    escribir_fichero_datos(fichero_salida, n, m, u, matriz_c, matriz_o)
     
-    # 4. Mostrar solución
-    print_solution(solution_file)
-    
-    # 5. Limpiar
-    os.remove(solution_file)
+    # Resolver modelo
+    resolver_modelo(fichero_modelo, fichero_salida, fichero_temporal, n, m, u)
+
+if __name__ == "__main__":
+    main()

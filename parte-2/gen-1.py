@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import sys # para leer argumentos de la terminal
 import subprocess # para ejecutar glpsol
 import os # para borrar el fichero temporal

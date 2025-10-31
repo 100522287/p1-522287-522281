@@ -2,65 +2,60 @@
 # SETS
 ################################
 
-set BUSES; # autobuses (1,...,m)
-set SLOTS; # franjas horarias (1,...,n)
-set WORKSHOPS; # talleres (1,...,u)
+set BUSES; # Autobuses
+set SLOTS; # Franjas
+set WORKSHOP; # Talleres
 
 ################################
 # PARAMETROS
 ################################
 
-# conflictos entre autobuses i y l (pasajeros compartidos)
-param c{i in BUSES, l in BUSES};
+# Numero de pasajeros que han contratado simultaneamente los servicios de los autobuses
+param c {BUSES,BUSES} >= 0;
 
-# disponibilidad de franja k en taller j (0 o 1)
-# CORREGIDO: Invertido el orden de los índices a [SLOTS, WORKSHOPS] (n x u)
-param o{k in SLOTS, j in WORKSHOPS};
+# Indica si la franja s esta disponible en el taller t
+param o {SLOTS,WORKSHOP} binary;
 
 ################################
 # VARIABLES
 ################################
 
-# x=1 si autobús i se asigna al taller j en la franja k
-var x{i in BUSES, j in WORKSHOPS, k in SLOTS}, binary;
+# x[i,s,t] = 1 si el autobus i usa la franja s en el taller t
+var x {i in BUSES, s in SLOTS, t in WORKSHOP} binary;
 
-# y=1 si autobuses i y l están ambos en la franja k (en talleres diferentes)
-var y{i in BUSES, l in BUSES, k in SLOTS: i < l}, binary;
+# y[i,j,s] = 1 si (i y j) usan la misma franja s (solo se define para i<j para evitar doble conteo)
+var y {i in BUSES, j in BUSES, s in SLOTS: i < j} binary;
 
 ################################
 # F.O.
 ################################
 
-# minimizar el número total de usuarios asignados a la misma franja en talleres diferentes
-minimize TOTAL_CONFLICTS:
-    sum{i in BUSES, l in BUSES, k in SLOTS: i < l} c[i,l] * y[i,l,k];
+# 4. Objetivo: minimizar conflictos de clientes
+#    Tres sumatorios con i<j para no duplicar pares (i,j) y (j,i)
+minimize Impacto:
+  sum {s in SLOTS, i in BUSES, j in BUSES: i < j} c[i,j] * y[i,j,s];
 
 ################################
 # CONSTRAINTS
 ################################
 
-# Restricción 1: Todos los autobuses deben ser asignados a una franja (y solo una) de algún taller
-s.t. bus_assignment{i in BUSES}:
-    sum{j in WORKSHOPS, k in SLOTS} x[i,j,k] = 1;
+# 1. Restriccion: cada autobus se asigna exactamente a una pareja (franja, taller)
+s.t. Asignacion {i in BUSES}:
+  sum {s in SLOTS, t in WORKSHOP} x[i,s,t] = 1;
 
-# Restricción 2: Cada franja de cada taller solo puede ser ocupada por un autobús como máximo
-# y solo si está disponible (o[k,j] = 1)
-# CORREGIDO: Invertido el orden de iteración y el acceso a 'o'
-s.t. slot_capacity{k in SLOTS, j in WORKSHOPS}:
-    sum{i in BUSES} x[i,j,k] <= o[k,j];
+# 2. Restriccion: capacidad/disponibilidad por (franja, taller)
+s.t. Capacidad {s in SLOTS, t in WORKSHOP}:
+  sum {i in BUSES} x[i,s,t] <= o[s,t];
 
-# Restricción 3a: y[i,l,k] solo puede valer 1 si el autobús i está en la franja k
-s.t. conflict_bus_i{i in BUSES, l in BUSES, k in SLOTS: i < l}:
-    y[i,l,k] <= sum{j in WORKSHOPS} x[i,j,k];
+# 3. Restriccion  AND: y[i,j,s] = 1 si (i usa s) Y (j usa s), solo para i < j
+s.t. And1 {i in BUSES, j in BUSES, s in SLOTS: i < j}:
+  y[i,j,s] <= sum {t in WORKSHOP} x[i,s,t];
 
-# Restricción 3b: y[i,l,k] solo puede valer 1 si el autobús l está en la franja k
-s.t. conflict_bus_l{i in BUSES, l in BUSES, k in SLOTS: i < l}:
-    y[i,l,k] <= sum{j in WORKSHOPS} x[l,j,k];
+s.t. And2 {i in BUSES, j in BUSES, s in SLOTS: i < j}:
+  y[i,j,s] <= sum {t in WORKSHOP} x[j,s,t];
 
-# Restricción 3c: y[i,l,k] debe ser 1 si ambos autobuses i y l están en la franja k
-# (esto detecta el conflicto independientemente del taller)
-s.t. conflict_both{i in BUSES, l in BUSES, k in SLOTS: i < l}:
-    y[i,l,k] >= sum{j in WORKSHOPS} x[i,j,k] + sum{j in WORKSHOPS} x[l,j,k] - 1;
+s.t. And3 {i in BUSES, j in BUSES, s in SLOTS: i < j}:
+  y[i,j,s] >= sum {t in WORKSHOP} x[i,s,t] + sum {t in WORKSHOP} x[j,s,t] - 1;
 
 ################################
 # SOLVE
